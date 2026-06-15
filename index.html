@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบริหารคลังสินค้าแบบแยกแท็บ (ป้องกันสต็อกติดลบ)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --border-color: #e2e8f0;
+            --danger-color: #ef4444;
+            --danger-bg: #fee2e2;
+            --success-color: #10b981;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2 {
+            color: #0f172a;
+            margin-bottom: 20px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-color);
+        }
+
+        /* ────────── Navigation Tabs ────────── */
+        .tabs-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 1px;
+        }
+
+        .tab-btn {
+            padding: 10px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #64748b;
+            background: none;
+            border: none;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            color: var(--primary-color);
+            background-color: #f1f5f9;
+            border-radius: 6px 6px 0 0;
+        }
+
+        .tab-btn.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+
+        /* Status bar */
+        #status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        #status-bar.connecting {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fcd34d;
+        }
+
+        #status-bar.connected {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #6ee7b7;
+        }
+
+        #status-bar.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .connecting .status-dot {
+            background: #f59e0b;
+            animation: pulse 1s infinite;
+        }
+
+        .connected .status-dot {
+            background: #10b981;
+        }
+
+        .error .status-dot {
+            background: #ef4444;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: 0.4
+            }
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            margin-top: 10px;
+        }
+
+        th,
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: #f1f5f9;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background-color: #f8fafc;
+        }
+
+        .out-of-stock {
+            background-color: var(--danger-bg);
+            color: var(--danger-color);
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+
+        .in-stock {
+            color: var(--success-color);
+            font-weight: bold;
+        }
+
+        .low-stock-row {
+            background-color: #fff1f2 !important;
+        }
+
+        .low-stock-row td:first-child {
+            border-left: 3px solid #ef4444;
+        }
+
+        .table-placeholder {
+            text-align: center;
+            color: #94a3b8;
+            padding: 32px;
+            font-size: 15px;
+        }
+
+        /* Form */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: #475569;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+        }
+
+        .btn {
+            display: inline-block;
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            background-color: #93c5fd;
+            cursor: not-allowed;
+        }
+
+        .dynamic-field {
+            display: none;
+            background: #f1f5f9;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            border: 1px dashed #cbd5e1;
+        }
+
+        /* Toast notification */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 20px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 500;
+            font-size: 14px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            transform: translateY(80px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 9999;
+        }
+
+        #toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        #toast.success {
+            background: #10b981;
+        }
+
+        #toast.error {
+            background: #ef4444;
+        }
+
+        .badge-withdraw {
+            background-color: #ffedd5;
+            color: #ea580c;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .badge-deposit {
+            background-color: #dcfce7;
+            color: #16a34a;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .badge-cat {
+            background-color: #e0f2fe;
+            color: #0369a1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .btn-delete {
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+
+        .btn-delete:hover {
+            background: #fee2e2;
+        }
+
+        /* Search bar */
+        .history-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+
+        .history-filters input,
+        .history-filters select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .history-filters input:focus,
+        .history-filters select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+        }
+
+        .history-filters input {
+            flex: 1;
+            min-width: 180px;
+        }
+
+        .filter-count {
+            font-size: 13px;
+            color: #64748b;
+            margin-left: auto;
+        }
+        .btn-edit {
+            background: none;
+            border: none;
+            color: var(--primary-color);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+
+        .btn-edit:hover {
+            background: #e0f2fe;
+        }
+
+        #cancel-edit {
+            display: none;
+            margin-top: 8px;
+            background-color: #94a3b8;
+        }
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #1e293b;
+        }
+
+        .modal-footer {
+            margin-top: 24px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-cancel {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
+        .btn-cancel:hover {
+            background: #cbd5e1;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .btn-edit-stock {
+            background: none;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn-edit-stock:hover {
+            background: #f1f5f9;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+            <h1 style="margin:0">📦ระบบจัดการสต็อก</h1>
+            <span id="live-badge"
+                style="display:none;background:#10b981;color:white;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:1px;margin-right:8px">●
+                LIVE</span>
+            <span id="sync-time" style="font-size:12px; color:#64748b; font-weight:500">อัปเดตล่าสุด: กำลังโหลด...</span>
+            <button onclick="manualSync()" 
+                style="background:none; border:none; cursor:pointer; color:var(--primary-color); font-size:12px; font-weight:bold; display:flex; align-items:center; gap:4px">
+                🔄 ซิงค์ตอนนี้
+            </button>
+        </div>
+
+        <div id="status-bar" class="connecting">
+            <div class="status-dot"></div>
+            <span id="status-text">กำลังเชื่อมต่อ Supabase...</span>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="tabs-container">
+                    <button class="tab-btn active" onclick="switchTab('all')">📋 ทั้งหมด</button>
+                    <button class="tab-btn" onclick="switchTab('general')">🔩 สต็อกอะไหล่</button>
+                    <button class="tab-btn" onclick="switchTab('glass')">🪟 สต็อกกระจก</button>
+                    <button class="tab-btn" onclick="switchTab('aluminum')">📐 สต็อกอลูมิเนียม</button>
+                </div>
+
+                <table id="stock-table">
+                    <thead>
+                        <tr>
+                            <th>หมวดหมู่</th>
+                            <th>ชื่อสินค้า</th>
+                            <th style="text-align:right">จำนวนคงเหลือ</th>
+                            <th>หน่วยนับ</th>
+                            <th style="text-align:right">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stock-tbody">
+                        <tr>
+                            <td colspan="4" class="table-placeholder">⏳ กำลังโหลดข้อมูลคลังสินค้า...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>🔄 บันทึกรายการ ฝาก-เบิก</h2>
+                <form id="transaction-form">
+                    <div class="form-group">
+                        <label for="date">วันที่ทำรายการ</label>
+                        <input type="date" id="date" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="type">ประเภทรายการ</label>
+                        <select id="type" class="form-control" required>
+                            <option value="withdraw">🔄 เบิกสินค้า (Withdraw)</option>
+                            <option value="deposit">📥 ฝากสินค้า/รับเข้า (Deposit)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="category">หมวดหมู่สินค้า</label>
+                        <select id="category" class="form-control" required onchange="toggleCategoryFields()">
+                            <option value="general">🔩 สต็อกอะไหล่ / อุปกรณ์</option>
+                            <option value="glass">🪟 สต็อกกระจก (คิดเป็นแผ่น)</option>
+                            <option value="aluminum">📐 สต็อกอลูมิเนียม (คิดเป็นเส้น)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="product_name">ชื่อสินค้า / หน้าตัด / ความหนา-สี</label>
+                        <input type="text" id="product_name" list="product-list" class="form-control"
+                            placeholder="เลือกหรือพิมพ์ชื่อสินค้า..." required>
+                        <datalist id="product-list"></datalist>
+                    </div>
+
+                    <div id="glass-fields" class="dynamic-field">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+                            <div class="form-group" style="margin:0">
+                                <label for="glass_width">ความกว้าง (นิ้ว)</label>
+                                <input type="number" id="glass_width" class="form-control" placeholder="0" min="0"
+                                    step="0.1">
+                            </div>
+                            <div class="form-group" style="margin:0">
+                                <label for="glass_height">ความยาว/สูง (นิ้ว)</label>
+                                <input type="number" id="glass_height" class="form-control" placeholder="0" min="0"
+                                    step="0.1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="aluminum-fields" class="dynamic-field">
+                        <div class="form-group" style="margin:0">
+                            <label for="aluminum_length">ความยาวต่อเส้น (เมตร)</label>
+                            <input type="number" id="aluminum_length" class="form-control" placeholder="เช่น 6" min="0"
+                                step="0.01">
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+                        <div class="form-group">
+                            <label id="qty-label" for="quantity">จำนวน</label>
+                            <input type="number" id="quantity" class="form-control" min="1" placeholder="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="unit">หน่วยนับ</label>
+                            <input type="text" id="unit" class="form-control" placeholder="ชิ้น, แผ่น, เส้น">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="price">ราคาต่อหน่วย (ถ้ามี)</label>
+                        <input type="number" id="price" class="form-control" placeholder="0.00" step="0.01">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="operator_name">ชื่อผู้เบิก / ผู้ฝาก</label>
+                        <input type="text" id="operator_name" class="form-control" placeholder="ระบุชื่อ..." required>
+                    </div>
+
+                    <div class="form-group">
+                        <button type="submit" id="submit-btn" class="btn">บันทึกรายการ</button>
+                        <button type="button" id="cancel-edit" class="btn" onclick="cancelEdit()">ยกเลิกการแก้ไข</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📜 ประวัติการทำรายการล่าสุด</h2>
+            <div class="history-filters">
+                <input type="text" id="search-name" placeholder="🔍 ค้นหาชื่อสินค้า..." oninput="filterHistory()">
+                <select id="filter-type" onchange="filterHistory()">
+                    <option value="all">🔄 ทุกประเภท</option>
+                    <option value="deposit">📥 ฝากสินค้า</option>
+                    <option value="withdraw">🔄 เบิกสินค้า</option>
+                </select>
+                <select id="filter-cat" onchange="filterHistory()">
+                    <option value="all">📦 ทุกหมวดหมู่</option>
+                    <option value="general">🔩 อะไหล่</option>
+                    <option value="glass">🪟 กระจก</option>
+                    <option value="aluminum">📐 อลูมิเนียม</option>
+                </select>
+                <span class="filter-count" id="filter-count"></span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>วันที่</th>
+                        <th>ประเภท</th>
+                        <th>หมวดหมู่</th>
+                        <th>ชื่อสินค้า</th>
+                        <th style="text-align:right">ราคา/หน่วย</th>
+                        <th>หน่วยนับ</th>
+                        <th style="text-align:right">จำนวนรวม</th>
+                        <th>ผู้ทำรายการ</th>
+                        <th style="text-align:right"></th>
+                    </tr>
+                </thead>
+                <tbody id="history-tbody">
+                    <tr>
+                        <td colspan="9" class="table-placeholder">⏳ กำลังโหลดประวัติ...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal สำหรับแก้ไขตัวมาสเตอร์สต็อก -->
+    <div id="edit-stock-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>✏️ แก้ไขข้อมูลเบื้องต้น</h3>
+                <button type="button" class="btn-delete" style="font-size: 24px" onclick="closeStockModal()">×</button>
+            </div>
+            <form id="edit-stock-form">
+                <input type="hidden" id="edit-stock-id">
+                <input type="hidden" id="old-product-name">
+                <div class="form-group">
+                    <label>หมวดหมู่</label>
+                    <select id="edit-stock-category" class="form-control">
+                        <option value="general">🔩 อะไหล่</option>
+                        <option value="glass">🪟 กระจก</option>
+                        <option value="aluminum">📐 อลูมิเนียม</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>ชื่อสินค้า</label>
+                    <input type="text" id="edit-stock-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>หน่วยนับ</label>
+                    <input type="text" id="edit-stock-unit" class="form-control">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-cancel" onclick="closeStockModal()">ยกเลิก</button>
+                    <button type="submit" id="update-stock-btn" class="btn">บันทึกการแก้ไข</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://kwvthxxsnazxfgsqoosx.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3dnRoeHhzbmF6eGZnc3Fvb3N4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0Nzg5ODUsImV4cCI6MjA5NzA1NDk4NX0.M4Siw9vnUSOdLiSryNp-TkmAVnFCMPjlNnB7ccJxZ0Y';
+        const { createClient } = supabase;
+        const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let currentActiveTab = 'all'; // ตัวแปรเก็บสถานะแท็บปัจจุบัน
+        let localStockCache = [];     // ตัวแปรเก็บข้อมูลสต็อกชั่วคราวเพื่อใช้กรองแท็บอย่างรวดเร็ว
+        let localHistoryCache = [];   // ตัวแปรเก็บประวัติทั้งหมดเพื่อใช้กรอง
+        let editingTx = null;         // เก็บข้อมูลรายการที่กำลังแก้ไข
+
+        function showToast(msg, type = 'success') {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = `show ${type}`;
+            clearTimeout(el._timer);
+            el._timer = setTimeout(() => { el.className = ''; }, 3500);
+            updateSyncTime();
+        }
+
+        function updateSyncTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('sync-time').textContent = `อัปเดตล่าสุด: ${timeStr}`;
+        }
+
+        async function manualSync() {
+            const syncBtn = document.querySelector('button[onclick="manualSync()"]');
+            syncBtn.style.opacity = '0.5';
+            syncBtn.disabled = true;
+            await loadStock();
+            await loadHistory();
+            showToast('🔄 ซิงค์ข้อมูลล่าสุดเรียบร้อย');
+            syncBtn.style.opacity = '1';
+            syncBtn.disabled = false;
+        }
+
+        function setStatus(state, msg) {
+            const bar = document.getElementById('status-bar');
+            bar.className = state;
+            document.getElementById('status-text').textContent = msg;
+        }
+
+        function fmtDate(str) {
+            if (!str) return '-';
+            const d = new Date(str);
+            return `${d.getDate()}/${d.getMonth() + 1}/${(d.getFullYear() % 100).toString().padStart(2, '0')}`;
+        }
+
+        // ฟังก์ชันสลับแท็บเมนู
+        function switchTab(tabName) {
+            currentActiveTab = tabName;
+
+            // อัปเดตสถานะปุ่มกดให้แสดง Active
+            const buttons = document.querySelectorAll('.tab-btn');
+            buttons.forEach(btn => {
+                if (btn.innerText.includes(tabName === 'all' ? 'ทั้งหมด' : tabName === 'general' ? 'อะไหล่' : tabName === 'glass' ? 'กระจก' : 'อลูมิเนียม')) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // เรนเดอร์ตารางใหม่ตามแท็บที่เลือก
+            renderStockTable(localStockCache);
+        }
+
+        function toggleCategoryFields() {
+            const cat = document.getElementById('category').value;
+            const glassFields = document.getElementById('glass-fields');
+            const aluFields = document.getElementById('aluminum-fields');
+            const unitInput = document.getElementById('unit');
+            const qtyLabel = document.getElementById('qty-label');
+
+            glassFields.style.display = 'none';
+            aluFields.style.display = 'none';
+
+            if (cat === 'glass') {
+                glassFields.style.display = 'block';
+                unitInput.value = 'แผ่น';
+                qtyLabel.innerText = 'จำนวน (แผ่น)';
+            } else if (cat === 'aluminum') {
+                aluFields.style.display = 'block';
+                unitInput.value = 'เส้น';
+                qtyLabel.innerText = 'จำนวน (เส้น)';
+            } else {
+                unitInput.value = '';
+                qtyLabel.innerText = 'จำนวน';
+            }
+        }
+
+        function getCatBadge(cat) {
+            if (cat === 'glass') return `<span class="badge-cat" style="background:#fae8ff; color:#a21caf">🪟 กระจก</span>`;
+            if (cat === 'aluminum') return `<span class="badge-cat" style="background:#f0fdf4; color:#166534">📐 อลูมิเนียม</span>`;
+            return `<span class="badge-cat" style="background:#f1f5f9; color:#475569">🔩 อะไหล่</span>`;
+        }
+
+        // ─────────────────────────────────────────────
+        //  Load & Render Stock Table
+        // ─────────────────────────────────────────────
+        async function loadStock() {
+            const { data, error } = await db
+                .from('stock_items')
+                .select('*')
+                .order('category').order('product_name');
+
+            if (error) {
+                document.getElementById('stock-tbody').innerHTML = `<tr><td colspan="4" class="table-placeholder" style="color:#ef4444">❌ โหลดข้อมูลไม่สำเร็จ: ${error.message}</td></tr>`;
+                return;
+            }
+
+            localStockCache = data || []; // บันทึกลงแคช
+            renderStockTable(localStockCache);
+        }
+
+        // แยกฟังก์ชันการเรนเดอร์มาจัดการคัดกรองตามแท็บ
+        function renderStockTable(data) {
+            const tbody = document.getElementById('stock-tbody');
+            const datalist = document.getElementById('product-list');
+
+            // อัปเดต Autocomplete ในฟอร์ม
+            datalist.innerHTML = data.map(r => `<option value="${r.product_name}">`).join('');
+
+            // กรองข้อมูลตามแถบ (Tab) ที่กำลังเปิดอยู่
+            const filteredData = currentActiveTab === 'all'
+                ? data
+                : data.filter(row => row.category === currentActiveTab);
+
+            if (filteredData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="table-placeholder">ไม่มีรายการสินค้าในแถบนี้</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filteredData.map(row => {
+                const qty = row.quantity ?? 0;
+                const isLow = qty < 5;
+                const qtyCell = qty <= 0
+                    ? `<span class="out-of-stock">หมดสต็อก (${qty})</span>`
+                    : isLow
+                        ? `<span class="out-of-stock">⚠️ ใกล้หมด (${qty})</span>`
+                        : `<span class="in-stock">${qty}</span>`;
+                const rowClass = isLow ? 'low-stock-row' : '';
+
+                return `
+            <tr class="${rowClass}">
+                <td>${getCatBadge(row.category)}</td>
+                <td>${row.product_name}</td>
+                <td style="text-align:right">${qtyCell}</td>
+                <td>${row.unit || '-'}</td>
+                <td style="text-align:right">
+                    <button class="btn-edit-stock" onclick="openStockModal('${row.id}')" title="แก้ไขชื่อ/หน่วย">✏️</button>
+                </td>
+            </tr>`;
+            }).join('');
+        }
+
+        // ─────────────────────────────────────────────
+        //  Load History
+        // ─────────────────────────────────────────────
+        async function loadHistory() {
+            const { data, error } = await db
+                .from('stock_transactions')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(200);
+
+            const tbody = document.getElementById('history-tbody');
+
+            if (error) {
+                tbody.innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:#ef4444">❌ โหลดประวัติไม่สำเร็จ: ${error.message}</td></tr>`;
+                return;
+            }
+
+            localHistoryCache = data || [];
+            filterHistory();
+        }
+
+        // ─────────────────────────────────────────────
+        //  Filter & Render History
+        // ─────────────────────────────────────────────
+        function filterHistory() {
+            const searchVal = (document.getElementById('search-name')?.value || '').toLowerCase();
+            const typeVal = document.getElementById('filter-type')?.value || 'all';
+            const catVal = document.getElementById('filter-cat')?.value || 'all';
+
+            let filtered = localHistoryCache.filter(row => {
+                const nameMatch = row.product_name.toLowerCase().includes(searchVal);
+                const typeMatch = typeVal === 'all' || row.type === typeVal;
+                const catMatch = catVal === 'all' || row.category === catVal;
+                return nameMatch && typeMatch && catMatch;
+            });
+
+            const tbody = document.getElementById('history-tbody');
+            const countEl = document.getElementById('filter-count');
+
+            if (countEl) countEl.textContent = `แสดง ${filtered.length} รายการ`;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" class="table-placeholder">ไม่พบรายการที่ค้นหา</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(row => {
+                const badge = row.type === 'deposit'
+                    ? `<span class="badge-deposit">📥 ฝากสินค้า</span>`
+                    : `<span class="badge-withdraw">🔄 เบิกสินค้า</span>`;
+                const price = row.price ? row.price.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-';
+                const operatorFromMetadata = row.metadata?.operator_name || row.operator_name || '-';
+
+                let note = '-';
+                if (row.category === 'glass' && row.metadata?.width) {
+                    note = `กว้าง ${row.metadata.width}" × ยาว ${row.metadata.height}" (รวม ${row.metadata.total_sqft} ตร.ฟุต)`;
+                } else if (row.category === 'aluminum' && row.metadata?.length) {
+                    note = `ยาว ${row.metadata.length} ม./เส้น (รวม ${row.metadata.total_meters} เมตร)`;
+                }
+
+                return `
+            <tr>
+                <td>${fmtDate(row.transaction_date || row.created_at)}</td>
+                <td>${badge}</td>
+                <td>${getCatBadge(row.category)}</td>
+                <td>${row.product_name}</td>
+                <td style="text-align:right">${price}</td>
+                <td>${row.unit || '-'}</td>
+                <td style="text-align:right; font-weight:bold">${row.quantity}</td>
+                <td><span style="font-size:13px; color:#1e293b; font-weight:500">${operatorFromMetadata}</span></td>
+                <td style="text-align:right; white-space:nowrap">
+                    <button class="btn-edit" title="แก้ไข" onclick="prepareEdit('${row.id}')">✏️</button>
+                    <button class="btn-delete" title="ลบรายการ" onclick="deleteTransaction('${row.id}', '${row.product_name}', ${row.quantity}, '${row.type}')">🗑️</button>
+                </td>
+            </tr>`;
+            }).join('');
+        }
+
+        // ─────────────────────────────────────────────
+        //  Submit Transaction
+        // ─────────────────────────────────────────────
+        document.getElementById('transaction-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.textContent = editingTx ? 'กำลังอัปเดตรายการ...' : 'กำลังตรวจสอบคลังสินค้า...';
+
+            const type = document.getElementById('type').value;
+            const category = document.getElementById('category').value;
+            const productName = document.getElementById('product_name').value.trim();
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const unit = document.getElementById('unit').value.trim();
+            const price = parseFloat(document.getElementById('price').value) || null;
+            const operatorName = document.getElementById('operator_name').value.trim();
+            const date = document.getElementById('date').value;
+
+            const { data: currentStock } = await db
+                .from('stock_items')
+                .select('quantity')
+                .eq('product_name', productName)
+                .maybeSingle();
+
+            const availableQty = currentStock ? currentStock.quantity : 0;
+
+            // 🛑 ระบบดักเนกาทีฟสต็อก
+            if (type === 'withdraw' && quantity > availableQty) {
+                showToast(`❌ ไม่สามารถเบิกได้! สินค้าคงเหลือไม่พอ (ในคลังมี: ${availableQty} แต่ต้องการเบิก: ${quantity})`, 'error');
+                btn.disabled = false;
+                btn.textContent = 'บันทึกรายการ';
+                return;
+            }
+
+            let metadata = {};
+            if (category === 'glass') {
+                const w = parseFloat(document.getElementById('glass_width').value) || 0;
+                const h = parseFloat(document.getElementById('glass_height').value) || 0;
+                const totalSqft = ((w * h) / 144) * quantity;
+                metadata = { width: w, height: h, total_sqft: parseFloat(totalSqft.toFixed(2)) };
+            } else if (category === 'aluminum') {
+                const len = parseFloat(document.getElementById('aluminum_length').value) || 0;
+                metadata = { length: len, total_meters: parseFloat((len * quantity).toFixed(2)) };
+            }
+
+            // เก็บชื่อผู้ทำรายการลงใน metadata เพื่อเลี่ยงการสร้าง column ใหม่
+            metadata.operator_name = operatorName;
+
+            const txData = {
+                type,
+                category,
+                product_name: productName,
+                quantity,
+                unit: unit || null,
+                price,
+                transaction_date: date,
+                metadata: metadata
+            };
+
+            if (editingTx) {
+                // --- กรณีแก้ไขรายการ ---
+                const { error: upErr } = await db.from('stock_transactions').update(txData).eq('id', editingTx.id);
+                if (upErr) {
+                    showToast('❌ อัปเดตไม่สำเร็จ: ' + upErr.message, 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'อัปเดตรายการ';
+                    return;
+                }
+
+                // คืนค่าสต็อกเก่าก่อน แล้วค่อยประมวลผลสต็อกใหม่ (Simulate revert + apply)
+                const oldDelta = editingTx.type === 'deposit' ? editingTx.quantity : -editingTx.quantity;
+                const newDelta = type === 'deposit' ? quantity : -quantity;
+                const totalStockChange = newDelta - oldDelta;
+
+                if (currentStock) {
+                    await db.from('stock_items').update({
+                        quantity: availableQty + totalStockChange,
+                        unit: unit || currentStock.unit,
+                        category: category
+                    }).eq('product_name', productName);
+                }
+                showToast('✅ อัปเดตรายการและยอดคงเหลือแล้ว');
+                cancelEdit();
+            } else {
+                // --- กรณีสร้างรายการใหม่ ---
+                const { error: txErr } = await db.from('stock_transactions').insert(txData);
+                if (txErr) {
+                    showToast('❌ บันทึกไม่สำเร็จ: ' + txErr.message, 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'บันทึกรายการ';
+                    return;
+                }
+
+                const delta = type === 'deposit' ? quantity : -quantity;
+
+                if (currentStock) {
+                    await db.from('stock_items').update({
+                        quantity: availableQty + delta,
+                        unit: unit || currentStock.unit,
+                        category: category
+                    }).eq('product_name', productName);
+                } else {
+                    await db.from('stock_items').insert({
+                        product_name: productName,
+                        quantity: delta,
+                        unit: unit || null,
+                        category: category
+                    });
+                }
+                showToast('✅ ทำรายการสำเร็จและอัปเดตยอดคงเหลือแล้ว');
+                e.target.reset();
+                document.getElementById('date').valueAsDate = new Date();
+                toggleCategoryFields();
+            }
+
+            await loadStock();
+            await loadHistory();
+
+            btn.disabled = false;
+            btn.textContent = 'บันทึกรายการ';
+        });
+
+        // ─────────────────────────────────────────────
+        //  Edit Transaction Logic
+        // ─────────────────────────────────────────────
+        function prepareEdit(id) {
+            const tx = localHistoryCache.find(r => r.id === id);
+            if (!tx) return;
+
+            editingTx = tx;
+            document.getElementById('date').value = tx.transaction_date || tx.created_at.split('T')[0];
+            document.getElementById('type').value = tx.type;
+            document.getElementById('category').value = tx.category;
+            document.getElementById('product_name').value = tx.product_name;
+            document.getElementById('quantity').value = tx.quantity;
+            document.getElementById('unit').value = tx.unit || '';
+            document.getElementById('price').value = tx.price || '';
+            document.getElementById('operator_name').value = tx.metadata?.operator_name || tx.operator_name || '';
+
+            toggleCategoryFields();
+            if (tx.category === 'glass' && tx.metadata) {
+                if (document.getElementById('glass_width')) document.getElementById('glass_width').value = tx.metadata.width || '';
+                if (document.getElementById('glass_height')) document.getElementById('glass_height').value = tx.metadata.height || '';
+            } else if (tx.category === 'aluminum' && tx.metadata) {
+                if (document.getElementById('aluminum_length')) document.getElementById('aluminum_length').value = tx.metadata.length || '';
+            }
+
+            const btn = document.getElementById('submit-btn');
+            btn.textContent = 'อัปเดตรายการ';
+            btn.style.backgroundColor = '#fbbf24'; // สีเหลืองสำหรับการแก้ไข
+            document.getElementById('cancel-edit').style.display = 'block';
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            editingTx = null;
+            document.getElementById('transaction-form').reset();
+            document.getElementById('date').valueAsDate = new Date();
+            const btn = document.getElementById('submit-btn');
+            btn.textContent = 'บันทึกรายการ';
+            btn.style.backgroundColor = ''; // กลับเป็นสีหลัก
+            document.getElementById('cancel-edit').style.display = 'none';
+            toggleCategoryFields();
+        }
+
+        // ─────────────────────────────────────────────
+        //  Stock Item Master Editing
+        // ─────────────────────────────────────────────
+        function openStockModal(id) {
+            const item = localStockCache.find(r => r.id === id);
+            if (!item) return;
+
+            document.getElementById('edit-stock-id').value = item.id;
+            document.getElementById('old-product-name').value = item.product_name;
+            document.getElementById('edit-stock-name').value = item.product_name;
+            document.getElementById('edit-stock-category').value = item.category;
+            document.getElementById('edit-stock-unit').value = item.unit || '';
+
+            document.getElementById('edit-stock-modal').classList.add('show');
+        }
+
+        function closeStockModal() {
+            document.getElementById('edit-stock-modal').classList.remove('show');
+        }
+
+        document.getElementById('edit-stock-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-stock-id').value;
+            const oldName = document.getElementById('old-product-name').value;
+            const newName = document.getElementById('edit-stock-name').value.trim();
+            const newCat = document.getElementById('edit-stock-category').value;
+            const newUnit = document.getElementById('edit-stock-unit').value.trim();
+
+            const btn = document.getElementById('update-stock-btn');
+            btn.disabled = true;
+            btn.textContent = 'กำลังบันทึก...';
+
+            // 1. อัปเดตข้อมูลมาสเตอร์
+            const { error: upErr } = await db.from('stock_items')
+                .update({ product_name: newName, category: newCat, unit: newUnit })
+                .eq('id', id);
+
+            if (upErr) {
+                showToast('❌ แก้ไขไม่สำเร็จ: ' + upErr.message, 'error');
+                btn.disabled = false;
+                btn.textContent = 'บันทึกการแก้ไข';
+                return;
+            }
+
+            // 2. ถ้าชื่อเปลี่ยน ต้องตามไปแก้อย่างอื่นด้วยเพื่อให้ประวัติยังเชื่อมกัน (Optional but recommended)
+            if (oldName !== newName) {
+                await db.from('stock_transactions')
+                    .update({ product_name: newName })
+                    .eq('product_name', oldName);
+            }
+
+            showToast('✅ แก้ไขข้อมูลสินค้าเรียบร้อยแล้ว');
+            closeStockModal();
+            await loadStock();
+            await loadHistory();
+            btn.disabled = false;
+            btn.textContent = 'บันทึกการแก้ไข';
+        });
+
+        // ─────────────────────────────────────────────
+        //  Delete Transaction
+        // ─────────────────────────────────────────────
+        async function deleteTransaction(id, productName, quantity, type) {
+            const { data: existing } = await db
+                .from('stock_items')
+                .select('id, quantity')
+                .eq('product_name', productName)
+                .maybeSingle();
+
+            const currentQty = existing ? existing.quantity : 0;
+            const reverseDelta = type === 'deposit' ? -quantity : quantity;
+
+            if (existing && (currentQty + reverseDelta) < 0) {
+                showToast(`❌ ไม่สามารถลบรายการนี้ได้ เนื่องจากจะทำให้สต็อกติดลบ! (ยอดปัจจุบัน: ${currentQty})`, 'error');
+                return;
+            }
+
+            if (!confirm(`ยืนยันการลบรายการ "${productName}" ใช่หรือไม่?`)) return;
+
+            const { error } = await db.from('stock_transactions').delete().eq('id', id);
+            if (error) { showToast('❌ ลบไม่สำเร็จ: ' + error.message, 'error'); return; }
+
+            if (existing) {
+                await db.from('stock_items').update({ quantity: currentQty + reverseDelta }).eq('id', existing.id);
+            }
+
+            showToast('🗑️ ลบรายการเรียบร้อยแล้ว');
+            await loadStock();
+            await loadHistory();
+        }
+
+        // ─────────────────────────────────────────────
+        //  Init
+        // ─────────────────────────────────────────────
+        async function init() {
+            document.getElementById('date').valueAsDate = new Date();
+            toggleCategoryFields();
+
+            const { error } = await db.from('stock_items').select('count', { count: 'exact', head: true });
+            if (error) {
+                setStatus('error', '❌ ไม่สามารถเชื่อมต่อ Supabase ได้');
+                return;
+            }
+
+            setStatus('connected', '✅ ระบบพร้อมทำงานและคัดกรองแบบแยกแท็บแล้ว');
+            await loadStock();
+            await loadHistory();
+            subscribeRealtime();
+        }
+
+        function subscribeRealtime() {
+            const channel = db.channel('stock-realtime')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items' }, (payload) => {
+                    console.log('Stock updated:', payload);
+                    loadStock();
+                    updateSyncTime();
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_transactions' }, (payload) => {
+                    console.log('Transaction updated:', payload);
+                    loadStock();
+                    loadHistory();
+                    updateSyncTime();
+                })
+                .subscribe((status) => {
+                    const badge = document.getElementById('live-badge');
+                    if (status === 'SUBSCRIBED') {
+                        badge.style.display = 'inline-block';
+                        updateSyncTime();
+                    } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                        badge.style.display = 'none';
+                        // พยายามเชื่อมต่อใหม่หลังจาก 5 วินาที
+                        setTimeout(subscribeRealtime, 5000);
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                });
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
